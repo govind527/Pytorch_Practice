@@ -1,0 +1,53 @@
+print("📊 Generating rolling forecast plots for each sitting month...")
+
+month_names_dict = {
+    1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+    7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
+}
+
+# Iterate through each sitting_month from 1 (January) to 11 (November)
+for sitting_month in range(1, 12):
+    plot_data_current_view = []
+    sitting_month_name = month_names_dict[sitting_month]
+
+    # Iterate through each month m from 1 to 12 (January to December)
+    for m in range(1, 13):
+        month_name = month_names_dict[m]
+        current_actual = np.nan
+        current_predicted = np.nan
+
+        if m < sitting_month:
+            # Retrieve actual revenue for months before the sitting month
+            actual_row = test_df[(test_df['year'] == 2025) & (test_df['month_num'] == m) & (test_df['actual_revenue'].notna())]
+            if not actual_row.empty:
+                current_actual = actual_row['actual_revenue'].values[0]
+        else:
+            # Retrieve predictions from the current sitting month onwards
+            prediction_row = monthly_results[
+                (monthly_results['start_month'] == sitting_month) &
+                (monthly_results['forecast_month'] == m)
+            ]
+            if not prediction_row.empty:
+                current_predicted = prediction_row['predicted'].values[0]
+                if not prediction_row['is_imputed'].values[0]:
+                    # If actual value exists for this forecast month (not imputed)
+                    current_actual = prediction_row['actual'].values[0]
+
+        plot_data_current_view.append({'month_name': month_name, 'actual': current_actual, 'predicted': current_predicted})
+
+    df_plot = pd.DataFrame(plot_data_current_view)
+
+    plt.figure(figsize=(14, 7))
+    sns.lineplot(x='month_name', y='actual', data=df_plot, marker='o', label='Actual Revenue', color='blue')
+    sns.lineplot(x='month_name', y='predicted', data=df_plot, marker='x', linestyle='--', label='Predicted Revenue', color='red')
+
+    plt.title(f'2025 Year-End Forecast View from Month {sitting_month_name}')
+    plt.xlabel('Month')
+    plt.ylabel('Revenue')
+    plt.ticklabel_format(style='plain', axis='y') # Prevent scientific notation on y-axis
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+print("✅ All rolling forecast plots generated!")
