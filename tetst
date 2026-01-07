@@ -51,3 +51,76 @@ for sitting_month in range(1, 12):
     plt.show()
 
 print("✅ All rolling forecast plots generated!")
+
+
+
+import numpy as np
+import pandas as pd
+
+def create_local_ewm_features_for_target_month(
+    sitting_month_data,
+    target_month,
+    full_df,
+    features,
+    month_col='month_num',
+    ewm_span=6,
+    window_size=6
+):
+    """
+    Create feature row for ONE target month using LOCAL EWM logic:
+    - Uses current snapshot + last (window_size - 1) rows
+    - Computes EWM(span=ewm_span) on that local window
+    - Propagates features into the future
+    """
+
+    # ---- Sitting snapshot ----
+    base_row = sitting_month_data.iloc[0].copy()
+    sitting_month = int(base_row[month_col])
+
+    step = target_month - sitting_month
+    if step < 0:
+        raise ValueError("Target month cannot be before sitting month")
+
+    # ---- Select local window: current + last 5 rows ----
+    local_window_df = (
+        full_df[full_df[month_col] <= sitting_month]
+        .sort_values(month_col)
+        .tail(window_size)
+    )
+
+    # ---- Auto-detect numeric feature columns ----
+    numeric_cols = [
+        c for c in features
+        if c != month_col and pd.api.types.is_numeric_dtype(full_df[c])
+    ]
+
+    # ---- Compute LOCAL EWM anchor per feature ----
+    local_ewm_anchor = {}
+
+    for col in numeric_cols:
+        series = local_window_df[col].dropna()
+
+        if len(series) >= 2:
+            local_ewm_anchor[col] = (
+                series.ewm(span=ewm_span, adjust=False).mean().iloc[-1]
+            )
+        elif len(series) == 1:
+            local_ewm_anchor[col] = series.iloc[0]
+        else:
+            local_ewm_anchor[col] = base_row[col]
+
+    # ---- Create target-month feature row ----
+    new_row = base_row.copy()
+    new_row[month_col] = target_month
+
+    decay = np.exp(-step / ewm_span)
+
+    for col in numeric_cols:
+        snapshot_val = base_row[col]
+        ewm_val = local_ewm_anchor[col]
+
+        # Smooth propagation
+        new_row[col] = snapshot_val * decay + ewm_val * (1 - decay)
+
+    return pd.DataFrame([new_row])[features]
+
